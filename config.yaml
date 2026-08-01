@@ -1,0 +1,12 @@
+# Scan thresholds — stocks crossing these get flagged
+alerts:
+  price_change_pct: 2.0      # flag if daily move exceeds ±2%
+  volume_spike_ratio: 1.5    # flag if volume is 1.5x the 20-day average
+
+scan:
+  period: "5d"               # yfinance history window
+  interval: "1d"
+
+output:
+  format: "table"            # table | json
+  show_all: true             # show every stock, not just alerts
