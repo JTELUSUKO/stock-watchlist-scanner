@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
+<!-- Template: scripts/install-schedule.sh fills in the path and time. -->
 <dict>
   <key>Label</key>
   <string>com.stockwatchlist.scanner</string>
@@ -8,22 +9,22 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/jagadeeshkancharla/Desktop/my_firsst-project/scripts/scan-watchlist.sh</string>
+    <string>__PROJECT_ROOT__/scripts/scan-watchlist.sh</string>
   </array>
 
   <key>StartCalendarInterval</key>
   <array>
-    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>30</integer></dict>
-    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>30</integer></dict>
-    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>30</integer></dict>
-    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>30</integer></dict>
-    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>__HOUR__</integer><key>Minute</key><integer>__MINUTE__</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>__HOUR__</integer><key>Minute</key><integer>__MINUTE__</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>__HOUR__</integer><key>Minute</key><integer>__MINUTE__</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>__HOUR__</integer><key>Minute</key><integer>__MINUTE__</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>__HOUR__</integer><key>Minute</key><integer>__MINUTE__</integer></dict>
   </array>
 
   <key>StandardOutPath</key>
-  <string>/Users/jagadeeshkancharla/Desktop/my_firsst-project/logs/launchd.out.log</string>
+  <string>__PROJECT_ROOT__/logs/launchd.out.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/jagadeeshkancharla/Desktop/my_firsst-project/logs/launchd.err.log</string>
+  <string>__PROJECT_ROOT__/logs/launchd.err.log</string>
 
   <key>RunAtLoad</key>
   <false/>

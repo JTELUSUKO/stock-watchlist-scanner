@@ -1,11 +1,14 @@
 # Scan thresholds — stocks crossing these get flagged
 alerts:
-  price_change_pct: 2.0      # flag if daily move exceeds ±2%
-  volume_spike_ratio: 1.5    # flag if volume is 1.5x the 20-day average
+  price_change_pct: 2.0      # flag if the move from the previous close exceeds ±2%
+  volume_spike_ratio: 1.5    # flag if volume is 1.5x what is normal by this time of day
 
 scan:
-  period: "5d"               # yfinance history window
-  interval: "1d"
+  lookback_days: 20          # trading days behind the volume average
+
+news:
+  enabled: true              # show the latest Finviz headline under each flagged stock
+  max_headlines: 1
 
 output:
   format: "table"            # table | json

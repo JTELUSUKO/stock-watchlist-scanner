@@ -1,13 +1,26 @@
 from __future__ import annotations
 
-import json
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
-import yaml
-
 from scanner.analyzer import ScanResult, analyze_snapshot
-from scanner.fetcher import fetch_snapshot
+from scanner.config import Config, load_config, load_watchlist
+from scanner.fetcher import fetch_market_data
+from scanner.metrics import Session, build_snapshot, detect_session
+from scanner.news import recent_headlines
 from scanner.report import render_json, render_table
+
+
+@dataclass
+class Scan:
+    scanned_at: datetime
+    session: Session
+    results: list[ScanResult]
+
+    @property
+    def all_failed(self) -> bool:
+        return all(r.snapshot.error for r in self.results)
 
 
 class WatchlistScannerAgent:
@@ -23,40 +36,37 @@ class WatchlistScannerAgent:
         self.watchlist_path = watchlist_path or self.root / "watchlist.json"
         self.config_path = config_path or self.root / "config.yaml"
 
-    def load_watchlist(self) -> list[dict]:
-        data = json.loads(self.watchlist_path.read_text())
-        return data.get("stocks", [])
+    def scan(self, config: Config | None = None, now: datetime | None = None) -> Scan:
+        config = config or load_config(self.config_path)
+        stocks = load_watchlist(self.watchlist_path)
+        now = now or datetime.now(timezone.utc)
 
-    def load_config(self) -> dict:
-        if not self.config_path.exists():
-            return {}
-        return yaml.safe_load(self.config_path.read_text()) or {}
-
-    def scan(self) -> list[ScanResult]:
-        config = self.load_config()
-        alerts_cfg = config.get("alerts", {})
-        scan_cfg = config.get("scan", {})
-
-        price_threshold = float(alerts_cfg.get("price_change_pct", 2.0))
-        volume_threshold = float(alerts_cfg.get("volume_spike_ratio", 1.5))
-        period = scan_cfg.get("period", "1mo")
+        data = fetch_market_data([symbol for symbol, _ in stocks])
+        session = detect_session(now, data.intraday)
 
         results: list[ScanResult] = []
-        for entry in self.load_watchlist():
-            symbol = entry["symbol"].upper()
-            name = entry.get("name", symbol)
-            snapshot = fetch_snapshot(symbol, name, period=period)
-            results.append(
-                analyze_snapshot(snapshot, price_threshold, volume_threshold)
+        for symbol, name in stocks:
+            snapshot = build_snapshot(
+                symbol,
+                name,
+                data.daily.get(symbol),
+                data.intraday.get(symbol),
+                session,
+                now,
+                lookback_days=config.lookback_days,
             )
-        return results
+            result = analyze_snapshot(
+                snapshot, config.price_change_pct, config.volume_spike_ratio, session.phase
+            )
+            if result.has_alerts and config.news_enabled:
+                result.headlines = recent_headlines(symbol, config.news_max_headlines, now)
+            results.append(result)
+        return Scan(scanned_at=now, session=session, results=results)
 
-    def run(self, output_format: str | None = None) -> str:
-        config = self.load_config()
-        output_cfg = config.get("output", {})
-        fmt = output_format or output_cfg.get("format", "table")
-        results = self.scan()
-
-        if fmt == "json":
-            return render_json(results)
-        return render_table(results, show_all=output_cfg.get("show_all", True))
+    def run(self, output_format: str | None = None) -> tuple[str, bool]:
+        """Return the rendered report and whether the scan got any data at all."""
+        config = load_config(self.config_path)
+        scan = self.scan(config)
+        if (output_format or config.output_format) == "json":
+            return render_json(scan), not scan.all_failed
+        return render_table(scan, show_all=config.show_all), not scan.all_failed

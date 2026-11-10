@@ -1,69 +1,81 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import logging
+import time
+from dataclasses import dataclass, field
 
+import pandas as pd
 import yfinance as yf
+
+from scanner.metrics import ET
+
+# 5-minute bars with extended hours: Yahoo serves up to 60 days of these.
+INTRADAY_INTERVAL = "5m"
+INTRADAY_PERIOD = "1mo"
+DAILY_PERIOD = "3mo"
+
+# A symbol without data is reported in the scan itself; yfinance would also log it per call.
+logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
 
 @dataclass
-class StockSnapshot:
-    symbol: str
-    name: str
-    price: float | None
-    prev_close: float | None
-    change_pct: float | None
-    volume: int | None
-    avg_volume_20d: float | None
-    volume_ratio: float | None
-    error: str | None = None
+class MarketData:
+    """Raw bars per watchlist symbol. A symbol missing from a dict has no data."""
+
+    daily: dict[str, pd.DataFrame] = field(default_factory=dict)
+    intraday: dict[str, pd.DataFrame] = field(default_factory=dict)
 
 
-def fetch_snapshot(symbol: str, name: str, period: str = "1mo") -> StockSnapshot:
+def yahoo_symbol(symbol: str) -> str:
+    """Yahoo writes share classes with a dash: BRK.B is BRK-B."""
+    return symbol.replace(".", "-")
+
+
+def _split(frame: pd.DataFrame | None, symbols: list[str]) -> dict[str, pd.DataFrame]:
+    out: dict[str, pd.DataFrame] = {}
+    if frame is None or frame.empty or not isinstance(frame.columns, pd.MultiIndex):
+        return out
+    available = set(frame.columns.get_level_values(0))
+    for symbol in symbols:
+        key = yahoo_symbol(symbol)
+        if key not in available:
+            continue
+        bars = frame[key].dropna(subset=["Close"])
+        if not bars.empty:
+            out[symbol] = bars
+    return out
+
+
+def _download(symbols: list[str], **kwargs) -> dict[str, pd.DataFrame]:
     try:
-        ticker = yf.Ticker(symbol)
-        info = ticker.fast_info
-        history = ticker.history(period=period, interval="1d")
-
-        price = getattr(info, "last_price", None) or getattr(info, "regular_market_price", None)
-        prev_close = getattr(info, "previous_close", None)
-
-        if price is None and not history.empty:
-            price = float(history["Close"].iloc[-1])
-        if prev_close is None and len(history) >= 2:
-            prev_close = float(history["Close"].iloc[-2])
-
-        change_pct = None
-        if price is not None and prev_close:
-            change_pct = ((price - prev_close) / prev_close) * 100
-
-        volume = int(history["Volume"].iloc[-1]) if not history.empty else None
-        avg_volume_20d = None
-        volume_ratio = None
-        if not history.empty and "Volume" in history:
-            recent = history["Volume"].tail(20)
-            avg_volume_20d = float(recent.mean())
-            if volume and avg_volume_20d:
-                volume_ratio = volume / avg_volume_20d
-
-        return StockSnapshot(
-            symbol=symbol,
-            name=name,
-            price=round(price, 2) if price is not None else None,
-            prev_close=round(prev_close, 2) if prev_close is not None else None,
-            change_pct=round(change_pct, 2) if change_pct is not None else None,
-            volume=volume,
-            avg_volume_20d=round(avg_volume_20d) if avg_volume_20d else None,
-            volume_ratio=round(volume_ratio, 2) if volume_ratio else None,
+        frame = yf.download(
+            [yahoo_symbol(s) for s in symbols],
+            auto_adjust=False,  # alerts compare against the close that actually printed
+            group_by="ticker",
+            progress=False,
+            threads=True,
+            **kwargs,
         )
-    except Exception as exc:
-        return StockSnapshot(
-            symbol=symbol,
-            name=name,
-            price=None,
-            prev_close=None,
-            change_pct=None,
-            volume=None,
-            avg_volume_20d=None,
-            volume_ratio=None,
-            error=str(exc),
-        )
+    except Exception:
+        return {}
+    return _split(frame, symbols)
+
+
+def _download_with_retry(symbols: list[str], **kwargs) -> dict[str, pd.DataFrame]:
+    result = _download(symbols, **kwargs)
+    missing = [s for s in symbols if s not in result]
+    if missing:
+        time.sleep(2)
+        result.update(_download(missing, **kwargs))
+    return result
+
+
+def fetch_market_data(symbols: list[str]) -> MarketData:
+    """Fetch daily and extended-hours intraday bars for every symbol in two batched calls."""
+    daily = _download_with_retry(symbols, period=DAILY_PERIOD, interval="1d")
+    intraday = _download_with_retry(
+        symbols, period=INTRADAY_PERIOD, interval=INTRADAY_INTERVAL, prepost=True
+    )
+    for symbol, bars in intraday.items():
+        intraday[symbol] = bars.tz_convert(ET)
+    return MarketData(daily=daily, intraday=intraday)

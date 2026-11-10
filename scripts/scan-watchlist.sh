@@ -4,8 +4,10 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
-if [[ -d ".venv" ]]; then
-  source ".venv/bin/activate"
+PYTHON="python3"
+if [[ -x ".venv/bin/python" ]]; then
+  PYTHON=".venv/bin/python"
 fi
 
-python3 run.py >> logs/scanner.log 2>&1
+mkdir -p logs
+"$PYTHON" run.py >> logs/scanner.log 2>&1

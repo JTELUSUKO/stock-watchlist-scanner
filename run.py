@@ -2,12 +2,18 @@
 """Run the stock watchlist scanner agent."""
 
 import argparse
+import sys
+import warnings
 from pathlib import Path
 
-from scanner.agent import WatchlistScannerAgent
+# The macOS system Python links LibreSSL, which makes urllib3 warn on every run.
+warnings.filterwarnings("ignore", message="urllib3 v2 only supports OpenSSL")
+
+from scanner.agent import WatchlistScannerAgent  # noqa: E402
+from scanner.config import ConfigError  # noqa: E402
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser(
         description="Scan your stock watchlist for price moves and volume spikes."
     )
@@ -35,9 +41,14 @@ def main() -> None:
         config_path=args.config,
     )
 
-    output_format = "json" if args.json else None
-    print(agent.run(output_format=output_format))
+    try:
+        report, got_data = agent.run(output_format="json" if args.json else None)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(report)
+    return 0 if got_data else 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
